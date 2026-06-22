@@ -1,205 +1,136 @@
-# 🎓 Unified Campus Helpdesk & Portal
+# 📖 Exhaustive Technical Reference Manual: Unified Campus Helpdesk & Portal
 
 ![MERN Stack](https://img.shields.io/badge/Stack-MERN-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Status](https://img.shields.io/badge/Status-Production_Ready-success)
 
-## 📌 Project Overview
-The **Unified Campus Helpdesk & Portal** is a comprehensive, enterprise-grade web application designed to bridge the gap between campus administration and the student body. Built entirely on the MERN stack (MongoDB, Express.js, React.js, Node.js), this platform replaces fragmented, paper-based administrative systems with a centralized, secure digital hub.
+## 1. Executive Summary & Tech Stack
 
-It solves three major campus operational bottlenecks: tracking and escalating student grievances, handling high-volume digital outpass requests, and maintaining a centralized registry for lost and found items. 
+The **Unified Campus Helpdesk & Portal** is an enterprise-grade, full-stack web application engineered to digitize and secure campus administrative workflows. The system completely replaces legacy, paper-based reporting with a highly secure, centralized digital hub for Grievances, Hostel Outpasses, and Lost & Found items.
 
----
-
-## ✨ Key Features
-
-### 👨‍🎓 Student Features
-- **Anonymous Reporting:** Submit grievances with total anonymity. The system aggressively strips user metadata before rendering on public boards to prevent retaliation.
-- **Digital Outpass System:** Apply for hostel leaves by specifying destinations and dates. Track approval status in real-time.
-- **Public Grievance Board & Upvoting:** View community issues and upvote shared grievances (with backend strict unique-upvote array checking).
-- **Lost & Found Registry:** Report lost/found items with contact details to facilitate fast retrieval.
-
-### 🛡️ Admin Features
-- **Secret-Key Registration:** Access to the admin portal is protected by a cryptographic Environmental Secret Key, preventing privilege escalation.
-- **Centralized Dashboard:** A birds-eye view of all pending, in-progress, and resolved tickets across all modules.
-- **Auto-Escalation Engine:** Grievances pending for more than 3 days are automatically escalated to highlight SLA breaches.
-- **Status & Remark System:** Approve/Reject outpasses or resolve grievances with official timestamped administrative remarks.
+### **Technology Stack**
+- **Frontend Layer:** React.js, Vite, Tailwind CSS (Glassmorphism), React Router DOM, React-Hot-Toast.
+- **Backend API Layer:** Node.js, Express.js.
+- **Database Layer:** MongoDB, Mongoose (ODM).
+- **Security Protocols:** JSON Web Tokens (JWT), bcryptjs, Helmet (Header Security), express-mongo-sanitize (NoSQL Injection Prevention), express-rate-limit (DDoS Prevention).
 
 ---
 
-## 🛠️ Technology Stack
+## 2. System Architecture & Workflows
 
-**Frontend**
-- **React.js** (Bootstrapped with Vite for optimized builds)
-- **Tailwind CSS** (Utility-first styling, Glassmorphism & Dark SaaS theme)
-- **React Router DOM** (Role-based protected routing)
-- **React-Hot-Toast** (Global non-intrusive notifications)
-- **Lucide React** (Consistent iconography)
+### **A. Authentication & JWT Validation Flow**
+The application uses stateless, token-based authentication. When a user requests access to a protected route, the middleware intercepts and validates the token cryptographically.
 
-**Backend**
-- **Node.js & Express.js** (REST API framework)
-- **MongoDB & Mongoose** (Database & ODM)
+```mermaid
+sequenceDiagram
+    participant User/Browser
+    participant AuthRoute (/api/auth)
+    participant Database
+    participant ProtectedRoute
 
-**Security**
-- **JSON Web Tokens (JWT)** (Stateless session management)
-- **bcryptjs** (Password hashing)
-- **Helmet** (HTTP Header hardening)
-- **express-mongo-sanitize** (NoSQL injection prevention)
-- **express-rate-limit** (DDoS and brute-force prevention)
-
----
-
-## 🚀 Prerequisites & Installation
-
-### 1. Clone the repository
-```bash
-git clone https://github.com/your-username/unified-campus-portal.git
-cd unified-campus-portal
+    User/Browser->>AuthRoute: POST /login (email, password)
+    AuthRoute->>Database: Find user by email
+    Database-->>AuthRoute: Return user & hashed password
+    AuthRoute->>AuthRoute: bcrypt.compare(password)
+    AuthRoute-->>User/Browser: Returns 200 OK + JWT Token
+    User/Browser->>User/Browser: Store JWT in LocalStorage
+    Note right of User/Browser: Next Request to Protected Data
+    User/Browser->>ProtectedRoute: GET /api/grievances/me + Header (Authorization: Bearer <token>)
+    ProtectedRoute->>ProtectedRoute: authMiddleware verifies signature using process.env.JWT_SECRET
+    ProtectedRoute-->>User/Browser: 200 OK + JSON Payload
 ```
 
-### 2. Setup the Backend
-```bash
-cd backend
-npm install
-```
+### **B. The Grievance Lifecycle & Auto-Escalation**
+The grievance module contains an active SLA (Service Level Agreement) tracker. If a ticket sits untouched for three days, the system automatically flags it as escalated during the next database retrieval phase.
 
-### 3. Setup the Frontend
-```bash
-cd ../frontend
-npm install
-```
-
-### 4. Configure Environment Variables
-Create a `.env` file in the `backend/` directory based on the template below.
-
-### 5. Run the Application
-Run the backend server (runs on `http://localhost:5000`):
-```bash
-cd backend
-npm run dev
-```
-
-Run the frontend client (runs on `http://localhost:5173`):
-```bash
-cd frontend
-npm run dev
+```mermaid
+stateDiagram-v2
+    [*] --> Pending : Student Submits Grievance
+    Pending --> PublicBoard : Anonymized rendering (if toggled)
+    Pending --> Escalated : 3 Days Pass (Auto-Escalated via getAllGrievances check)
+    Pending --> In_Progress : Admin updates status
+    Escalated --> In_Progress : Admin acknowledges
+    In_Progress --> Resolved : Admin adds remark & closes
+    Resolved --> [*]
 ```
 
 ---
 
-## 🔐 Environment Variables
+## 3. Database Schema & Relationships (Deep Dive)
 
-Create a `.env` file in the `/backend` directory.
+The system relies on a strictly typed, relational structure within a NoSQL environment utilizing **Mongoose**.
 
-```env
-PORT=5000
-MONGO_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/campusDB?retryWrites=true&w=majority
-JWT_SECRET=your_super_secret_jwt_signature_key_here
-ADMIN_SECRET=your_hardcoded_admin_registration_secret_key
-```
+### **Foreign Keys (ObjectId References)**
+The schema relies heavily on `mongoose.Schema.Types.ObjectId` to establish relationships between collections. Specifically, the `studentId` acts as a **Foreign Key** linking the `Grievance` and `Outpass` documents back to the `User` collection. When fetching data, Mongoose `.populate('studentId', 'name email')` is used to join the collections and merge the student's demographic data into the response object.
 
----
+### **1. User Model**
+The foundational identity layer.
+- `name`, `email` (String, Unique)
+- `password` (String, hashed via bcrypt)
+- `role` (Enum: `student`, `admin`, Default: `student`)
 
-## 📂 Folder Structure
+### **2. Grievance Model**
+- `studentId` (ObjectId, **Ref: User**)
+- `title`, `description` (String)
+- `category` (Enum: Academics, Hostel, Infrastructure, Mess/Cafeteria, Anti-Ragging, Other)
+- `status` (Enum: `Pending`, `In Progress`, `Resolved`, Default: `Pending`)
+- `isAnonymous` (Boolean): Determines if the `studentId` is stripped before public rendering.
+- `isEscalated` (Boolean): Flagged dynamically if pending > 3 days.
+- `upvotes` (Array of ObjectIds): Array of user IDs to enforce unique upvoting logic.
 
-```text
-📦 unified-campus-portal
- ┣ 📂 backend
- ┃ ┣ 📂 controllers       # Route logic (auth, grievance, outpass, lostItem)
- ┃ ┣ 📂 middleware        # Security (authMiddleware, adminMiddleware, rateLimiters)
- ┃ ┣ 📂 models            # Mongoose Schemas (User, Grievance, Outpass, LostItem)
- ┃ ┣ 📂 routes            # Express routers
- ┃ ┗ 📜 server.js         # Backend entry point
- ┗ 📂 frontend
-   ┣ 📂 src
-   ┃ ┣ 📂 components      # Reusable UI (Navbar)
-   ┃ ┣ 📂 pages           # Page Views (Landing, Login, StudentDashboard, AdminDashboard)
-   ┃ ┣ 📜 App.jsx         # React Router configuration
-   ┃ ┗ 📜 index.css       # Tailwind entry point
-   ┗ 📜 vite.config.js    # Vite configuration
-```
+### **3. Outpass Model**
+- `studentId` (ObjectId, **Ref: User**)
+- `destination`, `reason` (String)
+- `departureDate`, `returnDate` (Date)
+- `status` (Enum: `Pending`, `Approved`, `Rejected`, Default: `Pending`)
 
----
-
-## 📡 API Endpoints Reference
-
-| Route Prefix | Endpoint | Method | Access | Description |
-| :--- | :--- | :---: | :---: | :--- |
-| `/api/auth` | `/register` | POST | Public | Register student/admin |
-| `/api/auth` | `/login` | POST | Public | Authenticate user & get JWT |
-| `/api/grievances`| `/` | POST | Student | Submit a new grievance |
-| `/api/grievances`| `/public` | GET | Student | View anonymized public board |
-| `/api/grievances`| `/` | GET | Admin | View all grievances |
-| `/api/grievances`| `/:id/upvote`| PUT | Student | Upvote a grievance |
-| `/api/grievances`| `/:id` | PUT | Admin | Update status & add remark |
-| `/api/outpasses` | `/` | POST | Student | Apply for a leave outpass |
-| `/api/outpasses` | `/:id` | PUT | Admin | Approve/Reject outpass |
-| `/api/lost-items`| `/` | POST | Student | Report lost/found item |
-| `/api/lost-items`| `/:id/resolve`| PUT | Admin | Mark item as returned |
+### **4. LostItem Model**
+- `itemName`, `description`, `contactInfo` (String)
+- `type` (Enum: `Lost`, `Found`)
+- `status` (Enum: `Open`, `Resolved`, Default: `Open`)
+- `reportedBy` (ObjectId, **Ref: User**)
 
 ---
 
-## 🧠 Core Logic & Technical Deep-Dive
+## 4. File-by-File Working Explanation
 
-To showcase the technical depth of this project, below are actual snippets from the core backend logic demonstrating advanced Node.js and MongoDB capabilities.
+### **A. Backend Deep Dive**
 
-### 1. Auto-Escalation Logic
-If a grievance sits in the `Pending` state for over 3 days, it automatically flags itself as `isEscalated` for administrative review. This is processed efficiently using `Promise.all` during the database fetch cycle.
+#### **Controllers (`/controllers`)**
+- **`authController.js`**: Handles identity generation. In `registerUser`, the logic intercepts the payload. If the route is triggered via the admin portal, it strictly checks `req.body.secretKey` against `process.env.ADMIN_SECRET`. If it matches, the `role` is elevated to `admin`.
+- **`grievanceController.js`**: Houses the core logic of the application. 
+  - `getAllGrievances`: Iterates through all database grievances. If `status === 'Pending'` and `createdAt` is older than `Date.now() - 3 days`, it forces `g.isEscalated = true` and runs `g.save()`.
+  - `getPublicGrievances`: Strips `studentId._id` completely if `isAnonymous` is true.
+  - `upvoteGrievance`: Utilizes `Array.some()` to verify if the incoming `req.user.id` already exists in the grievance's `upvotes` array. Rejects if true, preventing duplicate upvotes.
+- **`outpassController.js` & `lostItemController.js`**: Standard CRUD controllers that parse `req.user.id` to attach the logged-in user to new documents.
+
+#### **Middleware (`/middleware`)**
+- **`authMiddleware.js` (`protect`)**: Extracts the Bearer token from headers. Uses `jwt.verify()` to cryptographically unpack the token payload. If valid, attaches the decoded `{ id, role }` to `req.user` and calls `next()`.
+- **`adminMiddleware.js` (`isAdmin`)**: Placed *after* `protect` in the route chain. Evaluates `req.user.role === 'admin'`. If true, `next()` is called. If false, it returns `403 Forbidden` (IDOR attack prevention).
+
+---
+
+### **B. Frontend Deep Dive**
+
+#### **Routing Configuration (`App.jsx`)**
+Utilizes React Router DOM to manage the SPA environment. Contains a `<ProtectedRoute />` wrapper that aggressively checks `localStorage.getItem('token')`. If the token is missing, the component returns `<Navigate to="/login" />`, forcing the user to the auth page.
+
+#### **Page Level (`/pages`)**
+- **`StudentDashboard.jsx`**: The core authenticated component. Upon mounting (`useEffect`), it fires an Axios GET request to `/api/grievances/me`. The incoming JSON array maps into visually distinct UI cards. When a new grievance is submitted via the form, an Axios POST is triggered. Upon a 201 status, `react-hot-toast` fires `toast.success()`, and the state array is re-fetched to cause a dynamic DOM rerender.
+- **`AdminDashboard.jsx`**: Similar mounting architecture, but calls the unrestricted `/api/grievances` (Admin-only route). The UI dynamically renders "Escalation" badges if the incoming JSON specifies `isEscalated: true`. It contains specialized logic to trigger `PUT` requests to manually update document statuses (`Resolved`, `Approved`, `Rejected`).
+
+---
+
+## 5. Security Hardening (Code Level)
+
+The API is fortified against common enterprise-level attack vectors. The below configurations are mounted sequentially in `server.js`.
+
+### **1. Express 5 / NoSQL Injection Prevention**
+Because the system runs on Express 5.x, `req.query` is configured natively as a getter-only property. To allow the `express-mongo-sanitize` package to effectively intercept and scrub malicious NoSQL operators (`$`, `.`), an inline patch converts the query back to a writable descriptor before the sanitization middleware engages.
 
 ```javascript
-// backend/controllers/grievanceController.js
-export const getAllGrievances = async (req, res) => {
-  try {
-    const rawGrievances = await Grievance.find()
-      .populate('studentId', 'name email')
-      .sort({ createdAt: -1 });
-
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-
-    // Process auto-escalation
-    const processedGrievances = await Promise.all(
-      rawGrievances.map(async (g) => {
-        // 1. Auto-Escalation Check
-        if (g.status === 'Pending' && new Date(g.createdAt) < threeDaysAgo && !g.isEscalated) {
-          g.isEscalated = true;
-          await g.save(); // Save the escalated status to the DB
-        }
-        return g;
-      })
-    );
-
-    res.status(200).json({ count: processedGrievances.length, grievances: processedGrievances });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error.' });
-  }
-};
-```
-
-### 2. Security & Rate Limiting Pipeline
-The application leverages industry-standard Express security middleware. Note the custom `Object.defineProperty` implementation designed to make `express-mongo-sanitize` compatible with the latest Express 5 getters.
-
-```javascript
-// backend/server.js
-import express from 'express';
-import helmet from 'helmet';
-import mongoSanitize from 'express-mongo-sanitize';
-import rateLimit from 'express-rate-limit';
-
-const app = express();
-
-// Global Rate Limiting: Max 100 requests per 15 mins per IP
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: 100, 
-  message: 'Too many requests from this IP, please try again after 15 minutes.'
-});
-
-// Set Security HTTP Headers against XSS & Clickjacking
-app.use(helmet());
-
-// Parse incoming JSON request bodies
+// Parse JSON request bodies
 app.use(express.json());
 
-// Security Patch: Redefine req.query as writable for Express 5 compatibility
+// Express 5 req.query Writable Patch
 app.use((req, res, next) => {
   const query = req.query;
   Object.defineProperty(req, 'query', {
@@ -208,29 +139,81 @@ app.use((req, res, next) => {
   next();
 });
 
-// Data sanitization against NoSQL query injection payloads
+// Strips NoSQL Operators (e.g. $gt, $eq) from payloads
 app.use(mongoSanitize());
-
-// Mount the limiter globally
-app.use('/api', globalLimiter);
 ```
 
-### 3. Admin Role Protection Middleware (IDOR Prevention)
-Prevents Insecure Direct Object Reference (IDOR) attacks by strictly ensuring only cryptographic tokens containing the `admin` payload can access sensitive mutation routes.
+### **2. Global & Strict Rate Limiting (DDoS & Spam Prevention)**
+Rate limiting blocks automated bots from spamming the database or brute-forcing the login portals.
 
 ```javascript
-// backend/middleware/adminMiddleware.js
-const isAdmin = (req, res, next) => {
-  // req.user is attached by the preceding authMiddleware
-  // after cryptographically verifying the JWT signature
-  if (req.user && req.user.role === 'admin') {
-    next(); 
-  } else {
-    res.status(403).json({
-      message: 'Access Denied. Only admins can perform this action.',
-    });
-  }
-};
+// backend/middleware/rateLimiters.js
+import rateLimit from 'express-rate-limit';
 
-export default isAdmin;
+// Applied globally to the entire API layer
+export const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Max 100 requests per IP
+  message: 'Too many requests, please try again later.'
+});
+
+// Applied aggressively to Auth, Grievances, and Outpasses
+export const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // Max 5 requests per minute
+  message: 'Slow down. Please try again in a minute.'
+});
 ```
+
+### **3. HTTP Header Defense (Helmet)**
+Mounted as `app.use(helmet());` in `server.js`, it automatically attaches 11 secure headers to every outgoing response, disabling `X-Powered-By`, enabling strict Transport Security, and blocking Cross-Site Scripting (XSS).
+
+---
+
+## 6. Local Installation & .env Setup
+
+### **Step 1: Clone & Install Dependencies**
+```bash
+# Clone the repository
+git clone https://github.com/your-username/unified-campus-portal.git
+cd unified-campus-portal
+
+# Install Backend
+cd backend
+npm install
+
+# Install Frontend
+cd ../frontend
+npm install
+```
+
+### **Step 2: Configure Environment Variables**
+Navigate to the `/backend` directory and create a `.env` file. Do not commit this file to version control.
+
+```env
+# /backend/.env
+PORT=5000
+MONGO_URI=mongodb+srv://<db_username>:<db_password>@cluster0.mongodb.net/campusDB
+JWT_SECRET=super_secure_random_cryptographic_string_2026
+ADMIN_SECRET=f47fd0b86b37207cc11368413e9a7798
+```
+
+### **Step 3: Run the Development Servers**
+
+**Terminal 1 (Backend):**
+```bash
+cd backend
+npm run dev
+# Expected output: 🚀 Server running on http://localhost:5000
+# Expected output: ✅ MongoDB Connected: cluster...
+```
+
+**Terminal 2 (Frontend):**
+```bash
+cd frontend
+npm run dev
+# Expected output: VITE vX.X.X ready in XXX ms
+# Expected output: ➜  Local:   http://localhost:5173/
+```
+
+Access the frontend via `http://localhost:5173` to explore the complete Unified Campus Helpdesk ecosystem.
